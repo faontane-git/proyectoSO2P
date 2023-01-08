@@ -3,13 +3,10 @@
 void print_help()
 /******************************************************************************/
 {
-    printf("Este programa que permite crear y monitoriar los pedidos de una emperesa\n"
+    printf("Este programa que permite Simular el viaje de un Cohete\n"
            "uso:\n"
            "Primero Compile el programa usando make\n"
-           "Luego de eso ejectue el prgrama con el siguiente comando ./chasquiEats n1, n2. n3, n4, n5\n"
-           "Donde n1 es el número de tamaño de la grilla, n2 un número que respresenta los resturantes\n"
-           "disponibles en la grilla, n3 el intervalo en valor de milisegundos para ciertos procesos, n4 la cantidad\n"
-           "de motorizados disponibles y n5 la cantidad de kilómetros de distancia.\n"
+           "Luego de eso ejectue el prgrama con el siguiente comando ./simulador n1, n2. n3, n4, n5\n"
            "Si no lo ingresa tal como está en el paso dos el programa le lanzará esta  alerta y no podrá continuar.\n"
            "\n");
 }
