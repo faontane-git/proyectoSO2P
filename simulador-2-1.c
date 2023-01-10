@@ -102,8 +102,8 @@ void *descender(void * param)
    *nivel=*nivel - 1;
 
     if (*distancia < 0){
-	*alarma=100; //cohere llegó al suelo
-         pthread_exit(0);
+	      *alarma=100; //cohere llegó al suelo
+        pthread_exit(0);
     }
   } 
 }
