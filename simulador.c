@@ -4,9 +4,12 @@
 #define NUM 5
 
 int *param[NUM], intervalo, giroscopio1, giroscopio2, nivel_combustible, distancia_inicial, puerto_comunicaciones;
-pthread_t tid;
+pthread_t tid, tg1, tg2;
 #define NUM 5
-void *descender_cohete(void *arg);
+void *movimiento_cohete(void *arg);
+void *sensor_giroscopio1(void *arg);
+void *sensor_giroscopio2(void *arg);
+
 
 void print_help()
 /******************************************************************************/
@@ -43,12 +46,13 @@ int main(int argc, char *argv[])
 
         // AQUÍ TRABAJAR
         pthread_attr_init(&attr);
-        pthread_create(&tid, &attr, descender_cohete, NULL);
+        pthread_create(&tid, &attr, movimiento_cohete, NULL);
 
         while (1)
         {
             printf("Valor actual distancia %d, combustible %d\n", distancia_inicial, nivel_combustible);
-            if(distancia_inicial==0){
+            if (distancia_inicial == 0)
+            {
                 break;
             }
         }
@@ -57,20 +61,58 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-void *descender_cohete(void *arg)
+// Hilo principal
+void *movimiento_cohete(void *arg)
 {
     while (1)
     {
-        sleep(intervalo);
+        usleep(intervalo * 1000);
         distancia_inicial -= 1;
- 
+
         if (distancia_inicial < 0)
         {
             pthread_exit(0);
         }
+        if (distancia_inicial <= 100)
+        {
+            printf("¡Iniciando secuencia de aterrizaje!");
+            printf("Encendiendo Propulsor principal");
+            // Propulsor principal encendido
+        }
+
         if (distancia_inicial == 1)
         {
             printf("Alunizaje Exitoso!");
         }
+    }
+}
+
+void *sensor_giroscopio1(void *arg)
+{
+
+    if (giroscopio1 > 0)
+    {
+        printf("Enderezando el cohete!");
+        giroscopio1 = giroscopio1 - giroscopio1;
+    }
+    else if (giroscopio1 < 0)
+    {
+        printf("Enderezando el cohete!");
+        giroscopio1 = giroscopio1 + giroscopio1;
+    }
+}
+
+void *sensor_giroscopio2(void *arg)
+{
+
+    if (giroscopio1 > 0)
+    {
+        printf("Enderezando el cohete!");
+        giroscopio2 = giroscopio2 - giroscopio2;
+    }
+    else if (giroscopio2 < 0)
+    {
+        printf("Enderezando el cohete!");
+        giroscopio2 = giroscopio2 + giroscopio2;
     }
 }
