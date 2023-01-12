@@ -4,12 +4,12 @@
 #define NUM 5
 
 int *param[NUM], intervalo, giroscopio1, giroscopio2, nivel_combustible, distancia_inicial, puerto_comunicaciones;
-pthread_t tid, tg1, tg2;
+pthread_t tid, tg1, tg2, tgs;
 #define NUM 5
 void *movimiento_cohete(void *arg);
 void *sensor_giroscopio1(void *arg);
 void *sensor_giroscopio2(void *arg);
-
+void *control_gasolina(void *arg);
 
 void print_help()
 /******************************************************************************/
@@ -50,7 +50,7 @@ int main(int argc, char *argv[])
 
         while (1)
         {
-            printf("Valor actual distancia %d, combustible %d\n", distancia_inicial, nivel_combustible);
+            printf("Valor actual distancia %d, combustible %d, giroscopio 1 %d, girosciopio 2 %d\n", distancia_inicial, nivel_combustible, giroscopio1, giroscopio2);
             if (distancia_inicial == 0)
             {
                 break;
@@ -80,39 +80,76 @@ void *movimiento_cohete(void *arg)
             // Propulsor principal encendido
         }
 
+        if (distancia_inicial < 5 && giroscopio1 < 0 && giroscopio2 < 0)
+        {
+            distancia_inicial += 30;
+        }
+
         if (distancia_inicial == 1)
         {
             printf("Alunizaje Exitoso!");
+            // Apagar todos los propulsores
         }
     }
 }
 
+// Hilo giroscopio 1
 void *sensor_giroscopio1(void *arg)
 {
-
-    if (giroscopio1 > 0)
+    print("Giroscopio 1 encendido");
+    while (1)
     {
-        printf("Enderezando el cohete!");
-        giroscopio1 = giroscopio1 - giroscopio1;
+        sleep(0.5);
+        int correccion = 0;
+        if (giroscopio1 > 0)
+        {
+            printf("Encendiendo Propulsor izquierdo!...");
+            printf("Enderezando el cohete!");
+            giroscopio1 = giroscopio1 - correccion;
+            correccion += 1;
+        }
+        else if (giroscopio1 < 0)
+        {
+            printf("Encendiendo Propulsor derecho!...");
+            printf("Enderezando el cohete!");
+            giroscopio1 = giroscopio1 + giroscopio1;
+        }
+        else
+        {
+            break;
+        }
     }
-    else if (giroscopio1 < 0)
-    {
-        printf("Enderezando el cohete!");
-        giroscopio1 = giroscopio1 + giroscopio1;
-    }
+    print("Giroscopio 1 apagado");
 }
 
+// Hilo giroscopio 2
 void *sensor_giroscopio2(void *arg)
 {
+    printf("Giroscopio 2 encendido");
+    while (1)
+    {
+        sleep(0.5);
+        int correccion = 0;
+        if (giroscopio1 > 0)
+        {
+            printf("Encendiendo Propulsor izquierdo!...");
+            printf("Enderezando el cohete!");
+            giroscopio2 = giroscopio2 - correccion;
+            correccion += 1;
+        }
+        else if (giroscopio2 < 0)
+        {
+            printf("Encendiendo Propulsor derecho!...");
+            printf("Enderezando el cohete!");
+            giroscopio2 = giroscopio2 + correccion;
+            correccion += 1;
+        }
+    }
+    print("Giroscopio 2 apagado");
+}
 
-    if (giroscopio1 > 0)
-    {
-        printf("Enderezando el cohete!");
-        giroscopio2 = giroscopio2 - giroscopio2;
-    }
-    else if (giroscopio2 < 0)
-    {
-        printf("Enderezando el cohete!");
-        giroscopio2 = giroscopio2 + giroscopio2;
-    }
+// Hilo Control Gasolina
+void *control_gasolina(void *arg)
+{
+    // Aquí vamos a controlar la gasolina
 }
