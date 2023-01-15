@@ -15,6 +15,8 @@
 int *param[NUM];
 int intervalo, giroscopio1, giroscopio2, nivel_combustible, distancia_inicial, puerto_comunicaciones; // INNGRESO DE DATOS DEL USUARIO
 int shmid[NUM];
+int correccion = 0;
+int correccion2 = 0;
 pthread_t tid, tg1, tg2, tgs;
 
 void *movimiento_cohete(void *arg);
@@ -66,6 +68,7 @@ int main(int argc, char *argv[])
         pthread_join(tid, NULL);
         pthread_join(tg1, NULL);
         pthread_join(tg2, NULL);
+        printf("Hilos Terminados");
 
         while (1)
         {
@@ -134,7 +137,9 @@ void *movimiento_cohete(void *arg)
         if (distancia_inicial == 1)
         {
             printf("Alunizaje Exitoso!\n");
+            printf("Apgando todos los propulsores!");
             // Apagar todos los propulsores
+            pthread_exit(0);
         }
     }
 }
@@ -146,11 +151,12 @@ void *sensor_giroscopio1(void *arg)
     while (1)
     {
         sleep(0.5);
-        int correccion = 0;
+
         if (giroscopio1 > 0)
         {
             printf("Encendiendo Propulsor izquierdo!...\n");
             printf("Enderezando el cohete!\n");
+            printf("GIROSCOPIO 1: %d\n", giroscopio1);
             giroscopio1 = giroscopio1 - correccion;
             correccion += 1;
         }
@@ -166,6 +172,7 @@ void *sensor_giroscopio1(void *arg)
         }
     }
     printf("Giroscopio 1 apagado\n");
+    pthread_exit(0);
 }
 
 // Hilo giroscopio 2
@@ -175,23 +182,24 @@ void *sensor_giroscopio2(void *arg)
     while (1)
     {
         sleep(0.5);
-        int correccion = 0;
-        if (giroscopio1 > 0)
+        if (giroscopio2 > 0)
         {
             printf("Encendiendo Propulsor izquierdo!...\n");
             printf("Enderezando el cohete!\n");
-            giroscopio2 = giroscopio2 - correccion;
-            correccion += 1;
+            printf("GIROSCOPIO 2: %d\n", giroscopio2);
+            giroscopio2 = giroscopio2 - correccion2;
+            correccion2 += 1;
         }
         else if (giroscopio2 < 0)
         {
             printf("Encendiendo Propulsor derecho!...\n");
             printf("Enderezando el cohete!\n");
-            giroscopio2 = giroscopio2 + correccion;
-            correccion += 1;
+            giroscopio2 = giroscopio2 + correccion2;
+            correccion2 += 1;
         }
     }
     printf("Giroscopio 2 apagado\n");
+    pthread_exit(0);
 }
 
 // Hilo Control Gasolina
