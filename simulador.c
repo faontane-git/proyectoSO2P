@@ -140,6 +140,7 @@ void *movimiento_cohete(void *arg)
             printf("Apgando todos los propulsores!");
             // Apagar todos los propulsores
             pthread_exit(0);
+             
         }
     }
 }
@@ -196,6 +197,8 @@ void *sensor_giroscopio2(void *arg)
             printf("Enderezando el cohete!\n");
             giroscopio2 = giroscopio2 + correccion2;
             correccion2 += 1;
+        }else{
+            break;
         }
     }
     printf("Giroscopio 2 apagado\n");

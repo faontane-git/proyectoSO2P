@@ -1,56 +1,114 @@
-#include <stdio.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
+#include <getopt.h>
+#include <limits.h>
 
-int main(int argc, char *argv[])
+#include "common.h"
+
+void print_help(char *command)
 {
-    int sock;
-    struct sockaddr_in server;
-    char message[1000], server_reply[2000];
+	printf("Cliente simple envío de comandos.\n");
+	printf("uso:\n %s <hostname> <puerto>\n", command);
+	printf(" %s -h\n", command);
+	printf("Opciones:\n");
+	printf(" -h\t\t\tAyuda, muestra este mensaje\n");
+}
 
-    // Crea un socket
-    sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock == -1)
-    {
-        printf("No se pudo crear el socket");
-    }
-    puts("Socket creado");
+int main(int argc, char **argv)
+{
+	int opt;
 
-    // Prepara la estructura sockaddr_in
-    server.sin_addr.s_addr = inet_addr("127.0.0.1"); // dirección IP del servidor
-    server.sin_family = AF_INET;
-    server.sin_port = htons(8888); // puerto del servidor
+	//Socket
+	int clientfd;
+	//Direcciones y puertos
+	char *hostname, *port;
 
-    // Conecta al servidor
-    if (connect(sock, (struct sockaddr *)&server, sizeof(server)) < 0)
-    {
-        perror("Falló la conexión al servidor");
-        return 1;
-    }
+	//Lectura desde consola
+	char *linea_consola;
+	char read_buffer[MAXLINE + 1] = {0};
+	size_t max = MAXLINE;
+	ssize_t n, l = 0;
 
-    puts("Conectado al servidor\n");
+	while ((opt = getopt (argc, argv, "h")) != -1){
+		switch(opt)
+		{
+			case 'h':
+				print_help(argv[0]);
+				return 0;
+			default:
+				fprintf(stderr, "uso: %s <hostname> <puerto>\n", argv[0]);
+				fprintf(stderr, "     %s -h\n", argv[0]);
+				return -1;
+		}
+	}
 
-    // Envía un mensaje al servidor
-    printf("Ingresa un mensaje para enviar al servidor: ");
-    scanf("%s", message);
+	if(argc != 3){
+		fprintf(stderr, "uso: %s <hostname> <puerto>\n", argv[0]);
+		fprintf(stderr, "     %s -h\n", argv[0]);
+		return -1;
+	}else{
+		hostname = argv[1];
+		port = argv[2];
+	}
 
-    if (send(sock, message, strlen(message), 0) < 0)
-    {
-        puts("Falló el envío");
-        return 1;
-    }
-    puts("Mensaje enviado\n");
+	//Valida el puerto
+	int port_n = atoi(port);
+	if(port_n <= 0 || port_n > USHRT_MAX){
+		fprintf(stderr, "Puerto: %s invalido. Ingrese un número entre 1 y %d.\n", port, USHRT_MAX);
+		return -1;
+	}
 
-    // Recibe una respuesta del servidor
-    if (recv(sock, server_reply, 2000, 0) < 0)
-    {
-        puts("Falló la recepción");
-        return 1;
-    }
-    puts("Respuesta del servidor:");
-    puts(server_reply);
+	//Se conecta al servidor retornando un socket conectado
+	clientfd = open_clientfd(hostname, port);
 
-    close(sock);
-    return 0;
+	if(clientfd < 0)
+		connection_error(clientfd);
+
+	printf("Conectado exitosamente a %s en el puerto %s.\n", hostname, port);
+
+	linea_consola = (char *) calloc(1, MAXLINE);
+	printf("Ingrese comando para enviar al servidor, escriba CHAO para terminar...\n");
+	printf("> ");
+	l = getline(&linea_consola, &max, stdin); //lee desde consola
+	while(l > 0){
+		n = write(clientfd, linea_consola, l); //Envia al servidor
+		if(n<=0)
+			break;
+
+		/* Obtiene respuesta del servidor
+		 * Insiste hasta vaciar el socket
+		*/
+		bool continuar = false;
+		do{
+			//Usa recv con MSG_DONTWAIT para no bloquear al leer el socket
+			n = recv(clientfd, read_buffer, MAXLINE, MSG_DONTWAIT);
+
+			if(n < 0){
+				if(errno == EAGAIN) //Vuelve a intentar
+					continuar = true;
+				else
+					continuar = false;
+			}else if(n == MAXLINE) //Socket lleno, volver a leer
+				continuar = true;
+			else if(n == 0)
+				continuar = false;
+			else{ //n < MAXLINE, se asume que son los últimos caracteres en el socket
+				char c = read_buffer[n - 1]; //Busca '\0' para detectar fin
+				if(c == '\0')
+					continuar = false;
+				else
+					continuar = true;
+			}
+
+			printf("%s", read_buffer);
+			memset(read_buffer,0,MAXLINE + 1); //Encerar el buffer
+		}while(continuar);
+
+		//Volver a leer desde consola
+		printf("> ");
+		l = getline(&linea_consola, &max, stdin);
+	}
+
+
+	printf("Desconectando...\n");
+	free(linea_consola);
+	close(clientfd);
 }
