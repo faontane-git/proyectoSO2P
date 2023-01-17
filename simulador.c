@@ -64,6 +64,7 @@ int main(int argc, char *argv[])
         pthread_create(&tid, &attr, movimiento_cohete, NULL);
         pthread_create(&tg1, NULL, sensor_giroscopio1, NULL);
         pthread_create(&tg2, NULL, sensor_giroscopio2, NULL);
+	sleep(0.5);
         // UNIÓN DE LOS HILOS
         pthread_join(tid, NULL);
         pthread_join(tg1, NULL);
@@ -139,10 +140,11 @@ void *movimiento_cohete(void *arg)
             printf("Alunizaje Exitoso!\n");
             printf("Apgando todos los propulsores!");
             // Apagar todos los propulsores
-            pthread_exit(0);
+            break;
              
         }
     }
+	pthread_exit(0);
 }
 
 // Hilo giroscopio 1

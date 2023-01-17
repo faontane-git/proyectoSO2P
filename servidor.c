@@ -1,308 +1,229 @@
-#include <getopt.h>
-#include <limits.h>
-#include <sys/wait.h>
-
 #include <pthread.h>
-#include <syslog.h>
-#include <fcntl.h>
-#include <semaphore.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <sys/types.h>
+#include <time.h>
+#include <unistd.h>
 
-#include "common.h" //TODO: Add here BUFFs functions definitions and Buff struct (In common.c the BUFFs implementations: buf_init, sbuf_remove, sbuf_insert)
-#define MINTHREADS 5;
+#define NUM 5
+#define SHMSZ 4
+#define SHM_ADDR 233
 
-bool jflag=false;
+int *param[NUM];
+int intervalo, giroscopio1, giroscopio2, nivel_combustible, distancia_inicial,
+	puerto_comunicaciones; // INNGRESO DE DATOS DEL USUARIO
+int shmid[NUM];
+int correccion = 0;
+int correccion2 = 0;
+pthread_t tid, tg1, tg2, tgs;
 
-void atender_cliente(int connfd);
+void *movimiento_cohete(void *arg);
+void *sensor_giroscopio1(void *arg);
+void *sensor_giroscopio2(void *arg);
+void *control_gasolina(void *arg);
 
-void print_help(char *command)
+void print_help()
+/******************************************************************************/
 {
-	printf("Servidor simple de ejecución remota de comandos.\n");
-	printf("uso:\n %s [-d] <puerto>\n", command);
-	printf(" %s -h\n", command);
-	printf("Opciones:\n");
-	printf(" -h\t\t\tAyuda, muestra este mensaje\n");
-	printf(" -d\t\t\tModo daemon\n");
+	printf("Este programa que permite Simular el viaje de un Cohete\n"
+		   "uso:\n"
+		   "Primero Compile el programa usando make\n"
+		   "Luego de eso ejectue el prgrama con el siguiente comando ./simulador "
+		   "n1, n2. n3, n4, n5\n"
+		   "Si no lo ingresa tal como está en el paso dos el programa le lanzará "
+		   "esta  alerta y no podrá continuar.\n"
+		   "\n");
 }
 
-/**
- * Función que crea argv separando una cadena de caracteres en
- * "tokens" delimitados por la cadena de caracteres delim.
- *
- * @param linea Cadena de caracteres a separar en tokens.
- * @param delim Cadena de caracteres a usar como delimitador.
- *
- * @return Puntero a argv en el heap, es necesario liberar esto después de uso.
- *	Retorna NULL si linea está vacía.
- */
-char **parse_comando(char *linea, char *delim)
+int main(int argc, char *argv[])
 {
-	char *token;
-	char *linea_copy;
-	int i, num_tokens = 0;
-	char **argv = NULL;
-	char *saveptr = NULL;
-
-	linea_copy = (char *) malloc(strlen(linea) + 1);
-	strcpy(linea_copy, linea);
-
-	/* Obtiene un conteo del número de argumentos */
-	token = strtok_r(linea_copy, delim, &saveptr);
-	/* recorre todos los tokens */
-	while( token != NULL ) {
-		token = strtok_r(NULL, delim, &saveptr);
-		num_tokens++;
+	pthread_attr_t attr;
+	if (argc != 7)
+	{
+		printf("¡Datos ingresados de forma incorrecta!");
+		return 0;
 	}
-	free(linea_copy);
+	else
+	{
 
-	/* Crea argv en el heap, extrae y copia los argumentos */
-	if(num_tokens > 0){
-
-		/* Crea el arreglo argv */
-		argv = (char **) malloc((num_tokens + 1) * sizeof(char **));
-
-		/* obtiene el primer token */
-		token = strtok_r(linea, delim, &saveptr);
-		/* recorre todos los tokens */
-		for(i = 0; i < num_tokens; i++){
-			argv[i] = (char *) malloc(strlen(token)+1);
-			strcpy(argv[i], token);
-			token = strtok_r(NULL, delim, &saveptr);
-		}
-		argv[i] = NULL;
-	}
-
-	return argv;
-}
-
-/**
- * Recibe SIGINT, termina ejecución. NO eliminar esta función
- */
-void salir(int signal){
-	printf("BYE\n");
-	exit(0);
-}
-
-void *thread(void *vargp);
-
-bool dflag = false; //Opción -d, El programa es Daemon
-
-void daemonize(char *nombre_programa)
-{
-	printf("Entrando modo daemon...\n");
-
-	int fd0, fd1, fd2;
-	pid_t pid;
-	
-	if ((pid = fork()) < 0){
-		fprintf(stderr, "No es posible hacer un fork, error %s\n", strerror(errno));
-		exit(1);
-	}else if (pid != 0)
-		exit(0);
-
-	setsid();
-
-	//Cerrar solamente stdout, stdin y stderr
-	close(0);
-	close(1);
-	close(2);
-
-	//se deben abrir otra vez, por que se podría abrir un archivo al stdout, stdin o stderr
-	//y los printf van a enviar a ese archivo
-	fd0 = open("/dev/null", O_RDWR);
-	fd1 = dup(fd0);
-	fd2 = dup(fd0);
-
-	//Abrir un log para este daemon en el sistema syslog
-	openlog(nombre_programa, LOG_CONS, LOG_DAEMON);
-	if (fd0 != 0 || fd1 != 1 || fd2 != 2) {
-		syslog(LOG_ERR, "unexpected file descriptors %d %d %d",
-		fd0, fd1, fd2);
-		exit(1);
-	}
-}
-
-sbuf_t sbuf;
-
-int main(int argc, char **argv)
-{
-	int opt, index;
-
-	//Sockets
-	int listenfd;
-	unsigned int clientlen;
-	//Direcciones y puertos
-	struct sockaddr_in clientaddr;
-	char *port;
-	
-	int workers=5;
-
-	while ((opt = getopt (argc, argv, "hdj:")) != -1){
-		switch(opt)
+		if (nivel_combustible < 0 || nivel_combustible > 100)
 		{
-			case 'h':
-				print_help(argv[0]);
-				return 0;
-			case 'd':
-				dflag = true;
+			printf("¡El nivel de combustible ingresado es incorrecto!");
+			return 0;
+		}
+		if (inicializar_memoria_compartida() == -1)
+			exit(-1);
+		intervalo = (int)strtol(argv[1], NULL, 10);
+		giroscopio1 = (int)strtol(argv[2], NULL, 10);
+		giroscopio2 = (int)strtol(argv[3], NULL, 10);
+		nivel_combustible = (int)strtol(argv[4], NULL, 10);
+		distancia_inicial = (int)strtol(argv[5], NULL, 10);
+		puerto_comunicaciones = (int)strtol(argv[6], NULL, 10);
+		// AQUÍ CREACIÓN DE LOS HILOS
+		pthread_attr_init(&attr);
+		pthread_create(&tid, &attr, movimiento_cohete, NULL);
+		pthread_create(&tg1, NULL, sensor_giroscopio1, NULL);
+		pthread_create(&tg2, NULL, sensor_giroscopio2, NULL);
+		sleep(0.5);
+		// UNIÓN DE LOS HILOS
+		pthread_join(tid, NULL);
+		pthread_join(tg1, NULL);
+		pthread_join(tg2, NULL);
+		printf("Hilos Terminados");
+
+		while (1)
+		{
+			printf("Valor actual distancia %d, combustible %d, giroscopio 1 %d, "
+				   "girosciopio 2 %d\n",
+				   distancia_inicial, nivel_combustible, giroscopio1, giroscopio2);
+			if (distancia_inicial == 0)
+			{
 				break;
-			//TODO: worker thread options
-				// save Nworkers (atoi optarg)
-			case 'j':
-				jflag=true;
-				workers=atoi(optarg);
-				break;
-			default:
-				fprintf(stderr, "uso: %s [-d] <puerto>\n", argv[0]);
-				fprintf(stderr, "	 %s -h\n", argv[0]);
-				return 1;
-		}
-	}
-
-	/* Recorre argumentos que no son opción */
-	for (index = optind; index < argc; index++)
-		port = argv[index];
-
-	if(argv == NULL){
-		fprintf(stderr, "uso: %s [-d] <puerto>\n", argv[0]);
-		fprintf(stderr, "	 %s -h\n", argv[0]);
-		return 1;
-	}
-
-	//Valida el puerto
-	int port_n = atoi(port);
-	if(port_n <= 0 || port_n > USHRT_MAX){
-		fprintf(stderr, "Puerto: %s invalido. Ingrese un número entre 1 y %d.\n", port, USHRT_MAX);
-		return 1;
-	}
-
-	//Registra funcion para señal SIGINT (Ctrl-C). NO eliminar
-	signal(SIGINT, salir);
-
-	//Abre un socket de escucha en port
-	listenfd = open_listenfd(port);
-
-	if(listenfd < 0)
-		connection_error(listenfd);
-
-	printf("server escuchando en puerto %s...\n", port);
-
-	if(dflag)
-		daemonize(argv[0]);
-
-	
-	int *connfd_ptr;
-	pthread_t tid;
-	
-	
-	//TODO:worker threads
-	if(jflag){
-		sbuf_init(&sbuf,24);
-		//clientlen=sizeof(clientaddr);
-		//listenfd=open_listenfd(port);
-		// init buf
-		// create N workers threads (for - pthread_create)
-		for(int i=0;i<workers;i++){
-			pthread_create(&tid,NULL,thread,NULL);
-		}
-
- 	}
-
-	
-
-	while (1) {
-		clientlen = sizeof(clientaddr);
-		connfd_ptr = (int *)malloc(sizeof(int));
-		*connfd_ptr = accept(listenfd, (struct sockaddr *)&clientaddr, &clientlen);
-
-		//pthread_create(&tid,NULL,thread,connfd_ptr);
-		
-		//TODO: replace all while content with BUFFINSERT method (insert connfd in buffer)
-			sbuf_insert(&sbuf,*connfd_ptr);
-		
-		
-		
-	}
-}
-
-/*
- * thread - En un nuevo hilo atiende al cliente. 
- */
-void *thread(void *vargp){
-	//Copia el valor en varg y libera inmediatamente la memoria usada
-	//int connfd = *((int *)vargp);
-	//free(vargp);
-
-	//Entra a estado detach antes de atender al cliente
-	pthread_detach(pthread_self());
-
-	//TODO:BUFF_REMOVE (while)
-	while(1){
-		int connfd=sbuf_remove(&sbuf);
-		//Atiende al cliente
-		atender_cliente(connfd);
-		close(connfd);
-		
-	}
-
-	return NULL;
-}
-
-void atender_cliente(int connfd)
-{
-	int n, status;
-	char buf[MAXLINE] = {0};
-	char **argv;
-	pid_t pid;
-
-	//Comunicación con cliente es delimitada con '\0'
-	while(1){
-		n = read(connfd, buf, MAXLINE);
-		if(n <= 0)
-			return;
-
-		printf("Recibido: %s", buf);
-
-		//Detecta "CHAO" y se desconecta del cliente
-		if(strcmp(buf, "CHAO\n") == 0){
-			write(connfd, "BYE\n", 5);
-			return;
-		}
-
-		//Remueve el salto de linea antes de extraer los tokens
-		buf[n - 1] = '\0';
-
-		//Crea argv con los argumentos en buf, asume separación por espacio
-		argv = parse_comando(buf, " ");
-
-		if(argv){
-			if((pid = fork()) == 0){
-				dup2(connfd, 1); //Redirecciona STDOUT al socket
-				dup2(connfd, 2); //Redirecciona STDERR al socket
-				if(execvp(argv[0], argv) < 0){
-					fprintf(stderr, "Comando desconocido...\n");
-					exit(1);
-				}
 			}
+		}
+	}
 
-			//Espera a que el proceso hijo termine su ejecución
-			waitpid(pid, &status, 0);
+	return 0;
+}
 
-			if(!WIFEXITED(status))
-				write(connfd, "ERROR\n",7);
-			else
-				write(connfd, "\0", 1); //Envia caracter null para notificar fin
+int inicializar_memoria_compartida(void)
+{
+	int i;
 
-			/*Libera argv y su contenido
-			para evitar fugas de memoria */
-			for(int i = 0; argv[i]; i++)
-				free(argv[i]);
-			free(argv);
+	for (i = 0; i < NUM; i++)
+	{
+		if ((shmid[i] = shmget(SHM_ADDR + i, SHMSZ, IPC_CREAT | 0666)) < 0)
+		{
+			perror("shmget");
+			return (-1);
+		}
+		if ((param[i] = shmat(shmid[i], NULL, 0)) == (int *)-1)
+		{
+			perror("shmat");
+			return (-1);
+		}
+	}
 
-		}else{
-			strcpy(buf, "Comando vacío...\n");
-			write(connfd, buf, strlen(buf) + 1);
+	distancia_inicial = param[0];
+	nivel_combustible = param[1];
+	giroscopio1 = param[2];
+	giroscopio2 = param[3];
+	// alarma = param[4];
+
+	return (1);
+}
+
+// Hilo principal
+void *movimiento_cohete(void *arg)
+{
+	while (1)
+	{
+		usleep(intervalo * 1000);
+		distancia_inicial -= 1;
+
+		if (distancia_inicial < 0)
+		{
+			pthread_exit(0);
+		}
+		if (distancia_inicial <= 100)
+		{
+			printf("¡Iniciando secuencia de aterrizaje!\n");
+			printf("Encendiendo Propulsor principal\n");
+			// Propulsor principal encendido
+			printf("Valor actual distancia %d, combustible %d, giroscopio 1 %d, "
+				   "girosciopio 2 %d\n",
+				   distancia_inicial, nivel_combustible, giroscopio1, giroscopio2);
 		}
 
-		memset(buf, 0, MAXLINE); //Encera el buffer
+		if (distancia_inicial < 5 && giroscopio1 < 0 && giroscopio2 < 0)
+		{
+			distancia_inicial += 30;
+		}
+
+		if (distancia_inicial == 1)
+		{
+			printf("Apgando todos los propulsores!...");
+			printf("Alunizaje Exitoso!\n");
+			distancia_inicial = 0;
+			// Apagar todos los propulsores
+			break;
+		}
+	}
+	pthread_exit(0);
+}
+
+// Hilo giroscopio 1
+void *sensor_giroscopio1(void *arg)
+{
+	printf("Giroscopio 1 encendido\n");
+	while (1)
+	{
+		sleep(0.5);
+		if (giroscopio1 > 0)
+		{
+			printf("Encendiendo Propulsor izquierdo!...\n");
+			printf("Enderezando el cohete!\n");
+			printf("GIROSCOPIO 1: %d\n", giroscopio1);
+			giroscopio1 = giroscopio1 - 1;
+			// correccion += 1;
+		}
+		else if (giroscopio1 < 0)
+		{
+			printf("Encendiendo Propulsor derecho!...\n");
+			printf("Enderezando el cohete!\n");
+			giroscopio1 = giroscopio1 + 1;
+		}
+		else
+		{
+			break;
+		}
+	}
+	printf("Giroscopio 1 apagado\n");
+	pthread_exit(0);
+}
+
+// Hilo giroscopio 2
+void *sensor_giroscopio2(void *arg)
+{
+	printf("Giroscopio 2 encendido\n");
+	while (1)
+	{
+		sleep(0.5);
+		if (giroscopio2 > 0)
+		{
+			printf("Encendiendo Propulsor izquierdo!...\n");
+			printf("Enderezando el cohete!\n");
+			printf("GIROSCOPIO 2: %d\n", giroscopio2);
+			giroscopio2 = giroscopio2 - 1;
+			// correccion2 += 1;
+		}
+		else if (giroscopio2 < 0)
+		{
+			printf("Encendiendo Propulsor derecho!...\n");
+			printf("Enderezando el cohete!\n");
+			giroscopio2 = giroscopio2 + 1;
+			// correccion2 += 1;
+		}
+		else
+		{
+			break;
+		}
+	}
+	printf("Giroscopio 2 apagado\n");
+	pthread_exit(0);
+}
+
+// Hilo Control Gasolina
+void *control_gasolina(void *arg)
+{
+	// Aquí vamos a controlar la gasolina
+	if (nivel_combustible <= 10)
+	{
+		printf("Gasolina debajo del 10 %%\n!!!!");
+		printf("Abortar Aterrizaje!\n");
+		// AQUÏ ABORTAR ATERRIZAJE
 	}
 }
