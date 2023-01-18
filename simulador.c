@@ -1,19 +1,20 @@
-#include <sys/types.h>
-#include <sys/ipc.h>
-#include <sys/shm.h>
+#include <pthread.h>
 #include <signal.h>
-#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <sys/types.h>
 #include <time.h>
-#include <pthread.h>
+#include <unistd.h>
 
 #define NUM 5
 #define SHMSZ 4
 #define SHM_ADDR 233
 
 int *param[NUM];
-int intervalo, giroscopio1, giroscopio2, nivel_combustible, distancia_inicial, puerto_comunicaciones; // INNGRESO DE DATOS DEL USUARIO
+int intervalo, giroscopio1, giroscopio2, nivel_combustible, distancia_inicial,
+    puerto_comunicaciones; // INNGRESO DE DATOS DEL USUARIO
 int shmid[NUM];
 int correccion = 0;
 int correccion2 = 0;
@@ -30,8 +31,16 @@ void print_help()
     printf("Este programa que permite Simular el viaje de un Cohete\n"
            "uso:\n"
            "Primero Compile el programa usando make\n"
-           "Luego de eso ejectue el prgrama con el siguiente comando ./simulador n1, n2. n3, n4, n5\n"
-           "Si no lo ingresa tal como está en el paso dos el programa le lanzará esta  alerta y no podrá continuar.\n"
+           "Luego de eso ejectue el prgrama con el siguiente comando ./simulador\n"
+           "n1, n2. n3, n4, n5, n6\n"
+           "n1 significa: intervalo de simulación en milisegundos\n"
+           "n2 significa: ángulo de giroscopio1 en grados\n"
+           "n3 significa: ángulo de giroscopio2 en grados\n"
+           "n4 significa: nivel de combustible entre 0 a 100\n"
+           "n5 significa: distancia incial\n"
+           "n6 significa: puerto de comunicaciones\n"
+           "Si no lo ingresa tal como está en el paso dos el programa le lanzará "
+           "esta  alerta y no podrá continuar.\n"
            "\n");
 }
 
@@ -40,7 +49,8 @@ int main(int argc, char *argv[])
     pthread_attr_t attr;
     if (argc != 7)
     {
-        printf("¡Datos ingresados de forma incorrecta!");
+        printf("¡Datos ingresados de forma incorrecta!\n");
+        print_help();
         return 0;
     }
     else
@@ -48,7 +58,7 @@ int main(int argc, char *argv[])
 
         if (nivel_combustible < 0 || nivel_combustible > 100)
         {
-            printf("¡El nivel de combustible ingresado es incorrecto!");
+            printf("¡El nivel de combustible ingresado es incorrecto!\n");
             return 0;
         }
         if (inicializar_memoria_compartida() == -1)
@@ -64,17 +74,19 @@ int main(int argc, char *argv[])
         pthread_create(&tid, &attr, movimiento_cohete, NULL);
         pthread_create(&tg1, NULL, sensor_giroscopio1, NULL);
         pthread_create(&tg2, NULL, sensor_giroscopio2, NULL);
-	sleep(0.5);
+        sleep(0.5);
         // UNIÓN DE LOS HILOS
         pthread_join(tid, NULL);
         pthread_join(tg1, NULL);
         pthread_join(tg2, NULL);
-        printf("Hilos Terminados");
+        printf("Hilos Terminados\n");
 
         while (1)
         {
-            printf("Valor actual distancia %d, combustible %d, giroscopio 1 %d, girosciopio 2 %d\n", distancia_inicial, nivel_combustible, giroscopio1, giroscopio2);
-            if (distancia_inicial == 0)
+            printf("Valor actual distancia %d, combustible %d, giroscopio 1 %d, "
+                   "girosciopio 2 %d\n",
+                   distancia_inicial, nivel_combustible, giroscopio1, giroscopio2);
+            if (distancia_inicial <= 0)
             {
                 break;
             }
@@ -118,7 +130,7 @@ void *movimiento_cohete(void *arg)
     {
         usleep(intervalo * 1000);
         distancia_inicial -= 1;
-
+        tablero_informacion();
         if (distancia_inicial < 0)
         {
             pthread_exit(0);
@@ -130,21 +142,25 @@ void *movimiento_cohete(void *arg)
             // Propulsor principal encendido
         }
 
-        if (distancia_inicial < 5 && giroscopio1 < 0 && giroscopio2 < 0)
+        if (distancia_inicial < 5 && (giroscopio1 > 0 || giroscopio2 > 0))
         {
             distancia_inicial += 30;
+            printf("Secuencia de aterriaje cancelada!!!\n");
+            printf("¡El cohete no está orientado para aterrizar y la distancia es de menos de 5m\n");
+            printf("Reiniciando secuencia de aterrizaje!!!\n");
         }
 
         if (distancia_inicial == 1)
         {
+            printf("Apgando todos los propulsores!...");
             printf("Alunizaje Exitoso!\n");
-            printf("Apgando todos los propulsores!");
+            distancia_inicial = 0;
             // Apagar todos los propulsores
+            pthread_exit(0);
             break;
-             
         }
     }
-	pthread_exit(0);
+    pthread_exit(0);
 }
 
 // Hilo giroscopio 1
@@ -154,20 +170,19 @@ void *sensor_giroscopio1(void *arg)
     while (1)
     {
         sleep(0.5);
-
         if (giroscopio1 > 0)
         {
             printf("Encendiendo Propulsor izquierdo!...\n");
             printf("Enderezando el cohete!\n");
             printf("GIROSCOPIO 1: %d\n", giroscopio1);
-            giroscopio1 = giroscopio1 - correccion;
-            correccion += 1;
+            giroscopio1 = giroscopio1 - 1;
+            // correccion += 1;
         }
         else if (giroscopio1 < 0)
         {
             printf("Encendiendo Propulsor derecho!...\n");
             printf("Enderezando el cohete!\n");
-            giroscopio1 = giroscopio1 + giroscopio1;
+            giroscopio1 = giroscopio1 + 1;
         }
         else
         {
@@ -190,16 +205,18 @@ void *sensor_giroscopio2(void *arg)
             printf("Encendiendo Propulsor izquierdo!...\n");
             printf("Enderezando el cohete!\n");
             printf("GIROSCOPIO 2: %d\n", giroscopio2);
-            giroscopio2 = giroscopio2 - correccion2;
-            correccion2 += 1;
+            giroscopio2 = giroscopio2 - 1;
+            // correccion2 += 1;
         }
         else if (giroscopio2 < 0)
         {
             printf("Encendiendo Propulsor derecho!...\n");
             printf("Enderezando el cohete!\n");
-            giroscopio2 = giroscopio2 + correccion2;
-            correccion2 += 1;
-        }else{
+            giroscopio2 = giroscopio2 + 1;
+            // correccion2 += 1;
+        }
+        else
+        {
             break;
         }
     }
@@ -216,5 +233,12 @@ void *control_gasolina(void *arg)
         printf("Gasolina debajo del 10 %%\n!!!!");
         printf("Abortar Aterrizaje!\n");
         // AQUÏ ABORTAR ATERRIZAJE
-    };
-};
+    }
+}
+
+void tablero_informacion()
+{
+    printf("Valor actual distancia %d, combustible %d, giroscopio 1 %d, "
+           "girosciopio 2 %d\n",
+           distancia_inicial, nivel_combustible, giroscopio1, giroscopio2);
+}
