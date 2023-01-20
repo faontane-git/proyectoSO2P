@@ -7,6 +7,8 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
+#include <semaphore.h>
+#include <stdbool.h>
 
 #define NUM 5
 #define SHMSZ 4
@@ -14,16 +16,16 @@
 
 int *param[NUM];
 int intervalo, giroscopio1, giroscopio2, nivel_combustible, distancia_inicial,
-    puerto_comunicaciones; // INNGRESO DE DATOS DEL USUARIO
+    puerto_comunicaciones; // INGRESO DE DATOS DEL USUARIO
 int shmid[NUM];
+bool aumentar_potencia = false;
 int correccion = 0;
 int correccion2 = 0;
-pthread_t tid, tg1, tg2, tgs;
+pthread_t tid, tg1, tg2;
 
 void *movimiento_cohete(void *arg);
 void *sensor_giroscopio1(void *arg);
 void *sensor_giroscopio2(void *arg);
-void *control_gasolina(void *arg);
 
 void print_help()
 /******************************************************************************/
@@ -53,9 +55,18 @@ int main(int argc, char *argv[])
         print_help();
         return 0;
     }
+    if (giroscopio1 == -1)
+    {
+        printf("Valiste!\n");
+        return 0;
+    }
+    if (giroscopio2 == -1)
+    {
+        printf("Valiste!\n");
+        return 0;
+    }
     else
     {
-
         if (nivel_combustible < 0 || nivel_combustible > 100)
         {
             printf("¡El nivel de combustible ingresado es incorrecto!\n");
@@ -169,20 +180,21 @@ void *sensor_giroscopio1(void *arg)
     printf("Giroscopio 1 encendido\n");
     while (1)
     {
-        sleep(0.5);
-        if (giroscopio1 > 0)
+        sleep(1);
+        control_gasolina();
+        if (giroscopio1 > 0 && control_gasolina >= 0)
         {
             printf("Encendiendo Propulsor izquierdo!...\n");
             printf("Enderezando el cohete!\n");
             printf("GIROSCOPIO 1: %d\n", giroscopio1);
-            giroscopio1 = giroscopio1 - 1;
+            giroscopio1 = giroscopio1 - 0.5;
             // correccion += 1;
         }
-        else if (giroscopio1 < 0)
+        else if (giroscopio1 < 0 && control_gasolina >= 0)
         {
             printf("Encendiendo Propulsor derecho!...\n");
             printf("Enderezando el cohete!\n");
-            giroscopio1 = giroscopio1 + 1;
+            giroscopio1 = giroscopio1 + 0.5;
         }
         else
         {
@@ -199,20 +211,21 @@ void *sensor_giroscopio2(void *arg)
     printf("Giroscopio 2 encendido\n");
     while (1)
     {
-        sleep(0.5);
-        if (giroscopio2 > 0)
+        sleep(1);
+        control_gasolina();
+        if (giroscopio2 > 0 && control_gasolina >= 0)
         {
             printf("Encendiendo Propulsor izquierdo!...\n");
             printf("Enderezando el cohete!\n");
             printf("GIROSCOPIO 2: %d\n", giroscopio2);
-            giroscopio2 = giroscopio2 - 1;
+            giroscopio2 = giroscopio2 - 0.5;
             // correccion2 += 1;
         }
-        else if (giroscopio2 < 0)
+        else if (giroscopio2 < 0 && control_gasolina >= 0)
         {
             printf("Encendiendo Propulsor derecho!...\n");
             printf("Enderezando el cohete!\n");
-            giroscopio2 = giroscopio2 + 1;
+            giroscopio2 = giroscopio2 + 0.5;
             // correccion2 += 1;
         }
         else
@@ -224,16 +237,20 @@ void *sensor_giroscopio2(void *arg)
     pthread_exit(0);
 }
 
-// Hilo Control Gasolina
-void *control_gasolina(void *arg)
+// Funcion Control Gasolina
+void control_gasolina()
 {
+    nivel_combustible -= 1;
     // Aquí vamos a controlar la gasolina
-    if (nivel_combustible <= 10)
+    /*
+     if (nivel_combustible <= 10 && 0)
     {
         printf("Gasolina debajo del 10 %%\n!!!!");
         printf("Abortar Aterrizaje!\n");
         // AQUÏ ABORTAR ATERRIZAJE
+        return (0);
     }
+    */
 }
 
 void tablero_informacion()

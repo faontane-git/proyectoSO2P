@@ -1,114 +1,148 @@
+#include <arpa/inet.h>
+#include <ctype.h>
+#include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <getopt.h>
-#include <limits.h>
+#include <math.h>
+#include <netinet/in.h>
+#include <pthread.h>
+#include <regex.h>
+#include <semaphore.h>
+#include <signal.h>
+#include <stdio.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ipc.h>
+#include <sys/sem.h>
+#include <sys/shm.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/sysinfo.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/queue.h>
+#include <unistd.h>
+#define MAXBUF 4000
 
-#include "common.h"
-
-void print_help(char *command)
+int server_pid, sockfd;
+int *hilos;
+int puerto_comunicaciones;
+typedef struct
 {
-	printf("Cliente simple envío de comandos.\n");
-	printf("uso:\n %s <hostname> <puerto>\n", command);
-	printf(" %s -h\n", command);
-	printf("Opciones:\n");
-	printf(" -h\t\t\tAyuda, muestra este mensaje\n");
+	int intervalo;
+	int giroscopio1;
+	int giroscopio2;
+	int nivel_combustible;
+	int distancia_inicial;
+} datos;
+/* ............................... *>> REFERENCIAS DE FUNCIONES <<* ................................ */
+void desconectarPorSenial(int sign);
+void cerrarConexion(int sign);
+char enviarMensaje(char *arv);
+void *obtenerDatoCompartido(key_t key, int flag);
+
+int main(int argc, char *argv[])
+{
+	/* ............................... *>> DECLARACIÓN DE VARIABLES <<* ................................ */
+
+	int status, opt, port_num, reg_value, reg_out;
+	char commandFile[MAXBUF];
+	struct sockaddr_in ip;
+	int contador;
+	datos ingreso;
+
+	ip.sin_family = AF_INET;
+	ip.sin_addr.s_addr = inet_addr("127.0.0.1");
+	ip.sin_port = htons(7734);
+	sockfd = socket(PF_INET, SOCK_STREAM, 0);
+	if (sockfd == -1)
+	{
+		perror("Socket create failed.\n");
+		return -1;
+	}
+
+	/* ...................... *>> MANEJO DE SEÑALES DE TERMINACIÓN DE PROCESO <<* ...................... */
+
+	/* ......................... *>> TOMAR ARGUMENTOS ENVIADOS POR CONSOLA <<* ......................... */
+	ingreso.intervalo = atoi(argv[1]);
+	ingreso.giroscopio1 = atoi(argv[2]);
+	ingreso.giroscopio2 = atoi(argv[3]);
+	ingreso.nivel_combustible = atoi(argv[4]);
+	ingreso.distancia_inicial = atoi(argv[5]);
+	puerto_comunicaciones = atoi(argv[6]);
+ 	ip.sin_port = htons(puerto_comunicaciones);
+	/* ............................... *>> CONEXIÓN CON EL SERVIDOR <<* ................................ */
+
+	int result = connect(sockfd, (struct sockaddr *)&ip, sizeof(ip));
+	if (result == -1)
+	{
+		perror("Error has occurred");
+		exit(-1);
+	}
+
+	if (send(sockfd, &ingreso, sizeof(ingreso), 0) == -1)
+	{
+		perror("Error: sending two values to server");
+	}
+	close(sockfd);
+
+	/* ............................. *>> COMANDOS DE   CLIENTE <<* ............................... */
+
+	printf("Este es la consola cliente de DarasViendo.\n");
+
+	while (1)
+	{
+		printf("Ingrese un comando: ");
+		fgets(commandFile, MAXBUF, stdin);
+		strtok(commandFile, "\n");
+	}
+	return 0;
 }
 
-int main(int argc, char **argv)
+/* ************************************************************************************************* */
+/* 									FUNCIONES - REFACTORIZACIÓN   									 */
+/* ************************************************************************************************* */
+
+/* ************************************************************************************************* */
+/* 								      FUNCIONES - MANEJO DE SEÑALES 								 */
+/* ************************************************************************************************* */
+
+void desconectarPorSenial(int sign)
+/**
+ * Propósito:
+ * 		Se desconecta del SERVIDOR enviando una señal y termina el proceso CLIENTE.
+ *
+ * Autor:
+ * 		Andrés Medina
+ *
+ * Parámetros:
+ *		Entrada, int SIG, el número de la señal hacia este proceso.
+ */
 {
-	int opt;
+	printf("\nDesconectando del servidor");
+	// desvincularDatoCompartido(hilos);
 
-	//Socket
-	int clientfd;
-	//Direcciones y puertos
-	char *hostname, *port;
+	kill(server_pid, SIGCONT);
 
-	//Lectura desde consola
-	char *linea_consola;
-	char read_buffer[MAXLINE + 1] = {0};
-	size_t max = MAXLINE;
-	ssize_t n, l = 0;
+	close(sockfd);
+	printf("\n[!!] Servidor desconectado\nBYE!\n");
+	exit(0);
+}
 
-	while ((opt = getopt (argc, argv, "h")) != -1){
-		switch(opt)
-		{
-			case 'h':
-				print_help(argv[0]);
-				return 0;
-			default:
-				fprintf(stderr, "uso: %s <hostname> <puerto>\n", argv[0]);
-				fprintf(stderr, "     %s -h\n", argv[0]);
-				return -1;
-		}
-	}
-
-	if(argc != 3){
-		fprintf(stderr, "uso: %s <hostname> <puerto>\n", argv[0]);
-		fprintf(stderr, "     %s -h\n", argv[0]);
-		return -1;
-	}else{
-		hostname = argv[1];
-		port = argv[2];
-	}
-
-	//Valida el puerto
-	int port_n = atoi(port);
-	if(port_n <= 0 || port_n > USHRT_MAX){
-		fprintf(stderr, "Puerto: %s invalido. Ingrese un número entre 1 y %d.\n", port, USHRT_MAX);
-		return -1;
-	}
-
-	//Se conecta al servidor retornando un socket conectado
-	clientfd = open_clientfd(hostname, port);
-
-	if(clientfd < 0)
-		connection_error(clientfd);
-
-	printf("Conectado exitosamente a %s en el puerto %s.\n", hostname, port);
-
-	linea_consola = (char *) calloc(1, MAXLINE);
-	printf("Ingrese comando para enviar al servidor, escriba CHAO para terminar...\n");
-	printf("> ");
-	l = getline(&linea_consola, &max, stdin); //lee desde consola
-	while(l > 0){
-		n = write(clientfd, linea_consola, l); //Envia al servidor
-		if(n<=0)
-			break;
-
-		/* Obtiene respuesta del servidor
-		 * Insiste hasta vaciar el socket
-		*/
-		bool continuar = false;
-		do{
-			//Usa recv con MSG_DONTWAIT para no bloquear al leer el socket
-			n = recv(clientfd, read_buffer, MAXLINE, MSG_DONTWAIT);
-
-			if(n < 0){
-				if(errno == EAGAIN) //Vuelve a intentar
-					continuar = true;
-				else
-					continuar = false;
-			}else if(n == MAXLINE) //Socket lleno, volver a leer
-				continuar = true;
-			else if(n == 0)
-				continuar = false;
-			else{ //n < MAXLINE, se asume que son los últimos caracteres en el socket
-				char c = read_buffer[n - 1]; //Busca '\0' para detectar fin
-				if(c == '\0')
-					continuar = false;
-				else
-					continuar = true;
-			}
-
-			printf("%s", read_buffer);
-			memset(read_buffer,0,MAXLINE + 1); //Encerar el buffer
-		}while(continuar);
-
-		//Volver a leer desde consola
-		printf("> ");
-		l = getline(&linea_consola, &max, stdin);
-	}
-
-
-	printf("Desconectando...\n");
-	free(linea_consola);
-	close(clientfd);
+void cerrarConexion(int sign)
+/**
+	close(sockfd);
+ * Propósito:
+ * 		Se desconecta del SERVIDOR recibiendo una señal y termina el proceso CLIENTE.
+ *
+ * Parámetros:
+ *		Entrada, int SIG, el número de la señal hacia este proceso.
+ */
+{
+	printf("\n[!!] Cliente desconectado por desconexión de servidor\n");
+	close(sockfd);
+	exit(0);
 }
