@@ -25,6 +25,7 @@
 #include <sys/wait.h>
 #include <sys/queue.h>
 #include <unistd.h>
+#include <ctype.h>
 #define MAXBUF 4000
 
 int server_pid, sockfd;
@@ -64,9 +65,7 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-	/* ...................... *>> MANEJO DE SEÑALES DE TERMINACIÓN DE PROCESO <<* ...................... */
-
-	/* ......................... *>> TOMAR ARGUMENTOS ENVIADOS POR CONSOLA <<* ......................... */
+	/* ......................... *>> TOMAR ARGUMENTOS ENVIADOS POR CONSOLA Y VALIDAR <<* ......................... */
 	ingreso.intervalo = atoi(argv[1]);
 	ingreso.giroscopio1 = atoi(argv[2]);
 	ingreso.giroscopio2 = atoi(argv[3]);
@@ -74,6 +73,44 @@ int main(int argc, char *argv[])
 	ingreso.distancia_inicial = atoi(argv[5]);
 	puerto_comunicaciones = atoi(argv[6]);
  	ip.sin_port = htons(puerto_comunicaciones);
+	
+	
+	ingreso.intervalo = atoi(argv[1]);
+	// Validar el ingreso del ángulo 1
+	// Validar que sea entero
+	if (ingreso.giroscopio1 < -91 || ingreso.giroscopio1> 90)
+	{
+		printf("El ángulo 1 no debe de ser mayor de 90 ni menor a -91");
+		return -1;
+	}
+	
+	// Validar el ingreso del ángulo 2
+	// Validar que sea entero
+	if (ingreso.giroscopio2 < -91 || ingreso.giroscopio2 > 90)
+	{
+		printf("El ángulo 2 no debe de ser mayor de 90 ni menor a -91");
+		return -1;
+	}
+	// Validar el nivel de combustible
+
+	if (ingreso.nivel_combustible <= 0 || ingreso.nivel_combustible> 100)
+	{
+		if (ingreso.nivel_combustible== 0)
+		{
+			printf("Flaco no puede ingresar nada de combustilble a la nave ponte pilas, ¡Vuelve a ingresar los datos!\n");
+		}
+		if (ingreso.nivel_combustible< 0)
+		{
+			printf("Flaco no puede ingresar combustilble negativo a la nave ponte pilas, ¡Vuelve a ingresar los datos!\n");
+		}
+		if (ingreso.nivel_combustible> 100)
+		{
+			printf("Flaco no puede ingresar más combustilble de lo permitido a la nave ponte pilas, ¡Vuelve a ingresar los datos!\n");
+		}
+		return (-1);
+	}
+	
+
 	/* ............................... *>> CONEXIÓN CON EL SERVIDOR <<* ................................ */
 
 	int result = connect(sockfd, (struct sockaddr *)&ip, sizeof(ip));
@@ -87,24 +124,22 @@ int main(int argc, char *argv[])
 	{
 		perror("Error: sending two values to server");
 	}
-	close(sockfd);
 
-	/* ............................. *>> COMANDOS DE   CLIENTE <<* ............................... */
+	/* ............................. *>> COMANDOS DEL CLIENTE <<* ............................... */
 
-	printf("Este es la consola cliente de DarasViendo.\n");
+	printf("Este es la consola cliente\n");
 
 	while (1)
 	{
 		printf("Ingrese un comando: ");
 		fgets(commandFile, MAXBUF, stdin);
 		strtok(commandFile, "\n");
+		break;
 	}
+	close(sockfd);
+
 	return 0;
 }
-
-/* ************************************************************************************************* */
-/* 									FUNCIONES - REFACTORIZACIÓN   									 */
-/* ************************************************************************************************* */
 
 /* ************************************************************************************************* */
 /* 								      FUNCIONES - MANEJO DE SEÑALES 								 */
@@ -114,17 +149,11 @@ void desconectarPorSenial(int sign)
 /**
  * Propósito:
  * 		Se desconecta del SERVIDOR enviando una señal y termina el proceso CLIENTE.
- *
- * Autor:
- * 		Andrés Medina
- *
  * Parámetros:
  *		Entrada, int SIG, el número de la señal hacia este proceso.
  */
 {
 	printf("\nDesconectando del servidor");
-	// desvincularDatoCompartido(hilos);
-
 	kill(server_pid, SIGCONT);
 
 	close(sockfd);

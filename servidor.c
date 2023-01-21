@@ -40,7 +40,7 @@ pthread_t tid, tg1, tg2;
 void *movimiento_cohete(void *arg);
 void *sensor_giroscopio1(void *arg);
 void *sensor_giroscopio2(void *arg);
-/* .......................... *>> DECLARACIÓN DE VARIABLES GLOBALES <<* ............................ */
+void control_gasolina();
 int client_sockfd, *num_client, total_client;
 bool finish_flag = false;
 unsigned short i = 0;
@@ -52,6 +52,7 @@ typedef struct
 	int nivel_combustible;
 	int distancia_inicial;
 } datos;
+datos ingreso;
 
 /* ............................... *>> REFERENCIAS DE FUNCIONES <<* ................................ */
 
@@ -69,9 +70,8 @@ int main(int argc, char *argv[])
 	struct sockaddr_in server_address;
 	struct sockaddr_in client_address;
 	int puerto_comunicaciones;
-	datos ingreso;
 	int semflg = 0666 | IPC_CREAT; /* PERMISOS */
-
+	bool potencia_media = false;
 	/* ............................. *>> CREAR SOCKET PARA EL SERVIDOR <<* ............................. */
 
 	server_sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -107,20 +107,12 @@ int main(int argc, char *argv[])
 	{
 		client_len = sizeof(client_address);
 		client_sockfd = accept(server_sockfd, (struct sockaddr *)&client_address, &client_len);
-		printf("XD");
+
 		if (read(client_sockfd, &ingreso, sizeof(ingreso)) == 1)
 		{
 			perror("Error: receiving data\n");
 			exit(1);
 		}
-		// ASIGNAR A VARIABLES
-
-		ingreso.intervalo;
-		ingreso.giroscopio1;
-		ingreso.giroscopio2;
-		ingreso.nivel_combustible;
-		ingreso.distancia_inicial;
-		// AQUI LOGICA
 
 		// AQUÍ CREACIÓN DE LOS HILOS
 		pthread_attr_init(&attr);
@@ -134,7 +126,6 @@ int main(int argc, char *argv[])
 		pthread_join(tg2, NULL);
 		printf("Hilos Terminados\n");
 
-		// printf(">>>>>>>>>>>>>>>>>>>>>>>>>><< [!] Cliente Conectado >><<<<<<<<<<<<<<<<<<<<<<<<<<\n");
 	} while (1);
 	return 0;
 }
@@ -144,33 +135,54 @@ void *movimiento_cohete(void *arg)
 {
 	while (1)
 	{
-		usleep(intervalo * 1000);
-		distancia_inicial -= 1;
+		usleep(ingreso.intervalo * 1000);
+		ingreso.distancia_inicial -= 1;
+		if (aumentar_potencia)
+		{
+			ingreso.nivel_combustible -= 5;
+		}
+		else
+		{
+			ingreso.nivel_combustible -= 1;
+		}
+
 		tablero_informacion();
-		if (distancia_inicial < 0)
+		if (ingreso.distancia_inicial < 0)
 		{
 			pthread_exit(0);
 		}
-		if (distancia_inicial <= 100)
+		if(ingreso.distancia_inicial>0 && (ingreso.giroscopio1 == 0 && ingreso.giroscopio2 == 0)){
+			aumentar_potencia=true;
+		}
+		if (ingreso.distancia_inicial <= 100 && (ingreso.giroscopio1 == 0 && ingreso.giroscopio2 == 0))
 		{
 			printf("¡Iniciando secuencia de aterrizaje!\n");
 			printf("Encendiendo Propulsor principal\n");
-			// Propulsor principal encendido
+			// Propulsor principal a máxima potencia
+			printf("Propulsor a máxima potencia!!!!!!");
+			aumentar_potencia = true;
+		}
+		if (ingreso.distancia_inicial <= 100 && (ingreso.giroscopio1 > 0 || ingreso.giroscopio2 > 0))
+		{
+			printf("¡Iniciando secuencia de aterrizaje!\n");
+			printf("Encendiendo Propulsor principal\n");
+			// Propulsor principal a máxima potencia
+			aumentar_potencia = false;
 		}
 
-		if (distancia_inicial < 5 && (giroscopio1 > 0 || giroscopio2 > 0))
+		if (ingreso.distancia_inicial < 5 && (ingreso.giroscopio1 > 0 || ingreso.giroscopio2 > 0))
 		{
-			distancia_inicial += 30;
+			ingreso.distancia_inicial += 30;
 			printf("Secuencia de aterriaje cancelada!!!\n");
 			printf("¡El cohete no está orientado para aterrizar y la distancia es de menos de 5m\n");
 			printf("Reiniciando secuencia de aterrizaje!!!\n");
 		}
 
-		if (distancia_inicial == 1)
+		if (ingreso.distancia_inicial == 1)
 		{
 			printf("Apgando todos los propulsores!...");
 			printf("Alunizaje Exitoso!\n");
-			distancia_inicial = 0;
+			ingreso.distancia_inicial = 0;
 			// Apagar todos los propulsores
 			pthread_exit(0);
 			break;
@@ -186,19 +198,18 @@ void *sensor_giroscopio1(void *arg)
 	while (1)
 	{
 		sleep(1);
-		if (giroscopio1 > 0 && control_gasolina >= 0)
+		if (ingreso.giroscopio1 > 0 && ingreso.nivel_combustible >= 0)
 		{
 			printf("Encendiendo Propulsor izquierdo!...\n");
 			printf("Enderezando el cohete!\n");
-			printf("GIROSCOPIO 1: %d\n", giroscopio1);
-			giroscopio1 = giroscopio1 - 0.5;
-			// correccion += 1;
+			printf("GIROSCOPIO 1: %d\n", ingreso.giroscopio1);
+			ingreso.giroscopio1 = ingreso.giroscopio1 - 0.5;
 		}
-		else if (giroscopio1 < 0 && control_gasolina >= 0)
+		else if (ingreso.giroscopio1 < 0 && ingreso.nivel_combustible >= 0)
 		{
 			printf("Encendiendo Propulsor derecho!...\n");
 			printf("Enderezando el cohete!\n");
-			giroscopio1 = giroscopio1 + 0.5;
+			ingreso.giroscopio1 = ingreso.giroscopio1 + 0.5;
 		}
 		else
 		{
@@ -216,18 +227,18 @@ void *sensor_giroscopio2(void *arg)
 	while (1)
 	{
 		sleep(1);
-		if (giroscopio2 > 0 && control_gasolina >= 0)
+		if (ingreso.giroscopio2 > 0 && ingreso.nivel_combustible >= 0)
 		{
 			printf("Encendiendo Propulsor izquierdo!...\n");
 			printf("Enderezando el cohete!\n");
 			printf("GIROSCOPIO 2: %d\n", giroscopio2);
-			giroscopio2 = giroscopio2 - 0.5;
+			ingreso.giroscopio2 = ingreso.giroscopio2 - 0.5;
 		}
-		else if (giroscopio2 < 0 && control_gasolina >= 0)
+		else if (ingreso.giroscopio2 < 0 && ingreso.nivel_combustible >= 0)
 		{
 			printf("Encendiendo Propulsor derecho!...\n");
 			printf("Enderezando el cohete!\n");
-			giroscopio2 = giroscopio2 + 0.5;
+			ingreso.giroscopio2 = ingreso.giroscopio2 + 0.5;
 		}
 		else
 		{
@@ -238,25 +249,9 @@ void *sensor_giroscopio2(void *arg)
 	pthread_exit(0);
 }
 
-// Funcion Control Gasolina
-void control_gasolina()
-{
-	nivel_combustible -= 1;
-	// Aquí vamos a controlar la gasolina
-	/*
-	 if (nivel_combustible <= 10 && 0)
-	{
-		printf("Gasolina debajo del 10 %%\n!!!!");
-		printf("Abortar Aterrizaje!\n");
-		// AQUÏ ABORTAR ATERRIZAJE
-		return (0);
-	}
-	*/
-}
-
 void tablero_informacion()
 {
 	printf("Valor actual distancia %d, combustible %d, giroscopio 1 %d, "
 		   "girosciopio 2 %d\n",
-		   distancia_inicial, nivel_combustible, giroscopio1, giroscopio2);
+		   ingreso.distancia_inicial, ingreso.nivel_combustible, ingreso.giroscopio1, ingreso.giroscopio2);
 }
