@@ -34,14 +34,18 @@ int intervalo, giroscopio1, giroscopio2, nivel_combustible, distancia_inicial,
 	puerto_comunicaciones; // INGRESO DE DATOS DEL USUARIO
 int shmid[NUM];
 bool aumentar_potencia = false;
-int correccion = 0;
-int correccion2 = 0;
-pthread_t tid, tg1, tg2;
+sem_t sem;
+int counter;
+pthread_t tid, tg1, tg2, tdp, tap, tsg;
 void *movimiento_cohete(void *arg);
 void *sensor_giroscopio1(void *arg);
 void *sensor_giroscopio2(void *arg);
-void control_gasolina();
+void *sensor_disminucion_potencia(void *arg);
+void *sensor_aumento_potencia(void *arg);
+void *sensor_control_gasolina(void *arg);
+
 int client_sockfd, *num_client, total_client;
+int *alarma = 0;
 bool finish_flag = false;
 unsigned short i = 0;
 typedef struct
@@ -61,6 +65,7 @@ void desconectarPorSenial(int sig);
 
 int main(int argc, char *argv[])
 {
+
 	/* ............................... *>> DECLARACIÓN DE VARIABLES <<* ................................ */
 	pthread_attr_t attr;
 	int server_sockfd;
@@ -72,6 +77,7 @@ int main(int argc, char *argv[])
 	int puerto_comunicaciones;
 	int semflg = 0666 | IPC_CREAT; /* PERMISOS */
 	bool potencia_media = false;
+
 	/* ............................. *>> CREAR SOCKET PARA EL SERVIDOR <<* ............................. */
 
 	server_sockfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -99,8 +105,6 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	// signal(SIGINT, cerrarServidor);
-
 	/* ................................... *>> ACEPTANDO CLIENTE <<* ................................... */
 
 	do
@@ -119,6 +123,9 @@ int main(int argc, char *argv[])
 		pthread_create(&tid, &attr, movimiento_cohete, NULL);
 		pthread_create(&tg1, NULL, sensor_giroscopio1, NULL);
 		pthread_create(&tg2, NULL, sensor_giroscopio2, NULL);
+		pthread_create(&tdp, NULL, sensor_disminucion_potencia, NULL);
+		pthread_create(&tap, NULL, sensor_aumento_potencia, NULL);
+		pthread_create(&tsg, NULL, sensor_control_gasolina, NULL);
 		sleep(0.5);
 		// UNIÓN DE LOS HILOS
 		pthread_join(tid, NULL);
@@ -137,37 +144,37 @@ void *movimiento_cohete(void *arg)
 	{
 		usleep(ingreso.intervalo * 1000);
 		ingreso.distancia_inicial -= 1;
-		if (aumentar_potencia)
-		{
-			ingreso.nivel_combustible -= 5;
-		}
-		else
-		{
-			ingreso.nivel_combustible -= 1;
-		}
 
 		tablero_informacion();
 		if (ingreso.distancia_inicial < 0)
 		{
 			pthread_exit(0);
 		}
-		if(ingreso.distancia_inicial>0 && (ingreso.giroscopio1 == 0 && ingreso.giroscopio2 == 0)){
-			aumentar_potencia=true;
+		if (ingreso.nivel_combustible < 10)
+		{
+			printf("Abortando aterrizaje por falta de gasolina!\n");
+			printf("Simulación terminada\n");
+			return (-1);
 		}
+
+		if (ingreso.distancia_inicial < 0)
+		{
+			pthread_exit(0);
+		}
+
 		if (ingreso.distancia_inicial <= 100 && (ingreso.giroscopio1 == 0 && ingreso.giroscopio2 == 0))
 		{
 			printf("¡Iniciando secuencia de aterrizaje!\n");
 			printf("Encendiendo Propulsor principal\n");
 			// Propulsor principal a máxima potencia
-			printf("Propulsor a máxima potencia!!!!!!");
-			aumentar_potencia = true;
+			printf("Propulsor a máxima potencia!!!!!\n");
 		}
 		if (ingreso.distancia_inicial <= 100 && (ingreso.giroscopio1 > 0 || ingreso.giroscopio2 > 0))
 		{
 			printf("¡Iniciando secuencia de aterrizaje!\n");
 			printf("Encendiendo Propulsor principal\n");
 			// Propulsor principal a máxima potencia
-			aumentar_potencia = false;
+			printf("Propulsor a potencia media!\n");
 		}
 
 		if (ingreso.distancia_inicial < 5 && (ingreso.giroscopio1 > 0 || ingreso.giroscopio2 > 0))
@@ -178,12 +185,11 @@ void *movimiento_cohete(void *arg)
 			printf("Reiniciando secuencia de aterrizaje!!!\n");
 		}
 
-		if (ingreso.distancia_inicial == 1)
+		if (ingreso.distancia_inicial == 1 && ingreso.nivel_combustible >= 10)
 		{
-			printf("Apgando todos los propulsores!...");
-			printf("Alunizaje Exitoso!\n");
+			printf("Apgando todos los propulsores!...\n");
+			printf("Aterrizaje Exitoso!\n");
 			ingreso.distancia_inicial = 0;
-			// Apagar todos los propulsores
 			pthread_exit(0);
 			break;
 		}
@@ -194,18 +200,29 @@ void *movimiento_cohete(void *arg)
 // Hilo giroscopio 1
 void *sensor_giroscopio1(void *arg)
 {
+	if (ingreso.giroscopio1 == 0)
+	{
+		pthread_exit(0);
+	}
 	printf("Giroscopio 1 encendido\n");
+	sem_init(&sem, 0, 1);
+	// Sección crítica
+	ingreso.nivel_combustible -= 1;
+	sem_wait(&sem); // Bloquea el semáforo
+	counter++;
+	sem_post(&sem); // Desbloquea el semáforo
+	// Fin sección crítica
+	sem_destroy(&sem);
 	while (1)
 	{
 		sleep(1);
-		if (ingreso.giroscopio1 > 0 && ingreso.nivel_combustible >= 0)
+		if (ingreso.giroscopio1 > 0 && ingreso.nivel_combustible >= 10)
 		{
 			printf("Encendiendo Propulsor izquierdo!...\n");
 			printf("Enderezando el cohete!\n");
-			printf("GIROSCOPIO 1: %d\n", ingreso.giroscopio1);
 			ingreso.giroscopio1 = ingreso.giroscopio1 - 0.5;
 		}
-		else if (ingreso.giroscopio1 < 0 && ingreso.nivel_combustible >= 0)
+		else if (ingreso.giroscopio1 < 0 && ingreso.nivel_combustible >= 10)
 		{
 			printf("Encendiendo Propulsor derecho!...\n");
 			printf("Enderezando el cohete!\n");
@@ -223,15 +240,26 @@ void *sensor_giroscopio1(void *arg)
 // Hilo giroscopio 2
 void *sensor_giroscopio2(void *arg)
 {
+	if (ingreso.giroscopio2 == 0)
+	{
+		pthread_exit(0);
+	}
 	printf("Giroscopio 2 encendido\n");
+	sem_init(&sem, 0, 1);
+	// Sección crítica
+	ingreso.nivel_combustible -= 1;
+	sem_wait(&sem); // Bloquea el semáforo
+	counter++;
+	sem_post(&sem); // Desbloquea el semáforo
+	// Fin sección crítica
+	sem_destroy(&sem);
 	while (1)
 	{
 		sleep(1);
-		if (ingreso.giroscopio2 > 0 && ingreso.nivel_combustible >= 0)
+		if (ingreso.giroscopio2 > 0 && ingreso.nivel_combustible >= 10)
 		{
 			printf("Encendiendo Propulsor izquierdo!...\n");
 			printf("Enderezando el cohete!\n");
-			printf("GIROSCOPIO 2: %d\n", giroscopio2);
 			ingreso.giroscopio2 = ingreso.giroscopio2 - 0.5;
 		}
 		else if (ingreso.giroscopio2 < 0 && ingreso.nivel_combustible >= 0)
@@ -249,6 +277,91 @@ void *sensor_giroscopio2(void *arg)
 	pthread_exit(0);
 }
 
+// Hilo control_gasolina
+void *sensor_control_gasolina(void *arg)
+{
+	while (1)
+	{
+		sleep(1);
+		// Manejos de semáforos
+		sem_init(&sem, 0, 1);
+		// Sección crítica
+		ingreso.nivel_combustible -= 1;
+		sem_wait(&sem); // Bloquea el semáforo
+		counter++;
+		sem_post(&sem); // Desbloquea el semáforo
+		// Fin sección crítica
+		sem_destroy(&sem);
+
+		if (ingreso.nivel_combustible < 10)
+		{
+			pthread_exit(0);
+		}
+	}
+}
+
+// Hilo de disminucion de potencia
+void *sensor_disminucion_potencia(void *arg)
+{
+
+	if (ingreso.giroscopio1 > 0 || ingreso.giroscopio2 > 0)
+	{
+		// Manejos de semáforos
+		sem_init(&sem, 0, 1);
+		// Sección crítica
+		ingreso.nivel_combustible -= 5;
+		aumentar_potencia = false;
+		sem_wait(&sem); // Bloquea el semáforo
+		counter++;
+		sem_post(&sem); // Desbloquea el semáforo
+		// Fin sección crítica
+		sem_destroy(&sem);
+
+		pthread_exit(0);
+	}
+}
+
+// Hilo de aumento de potencia
+void *sensor_aumento_potencia(void *arg)
+{
+	while (1)
+	{
+		if (ingreso.giroscopio1 == 0 && ingreso.giroscopio2 == 0)
+		{
+			// Manejos de semáforos
+			sem_init(&sem, 0, 1);
+			// Sección crítica
+			ingreso.nivel_combustible -= 5;
+			aumentar_potencia = true;
+			sem_wait(&sem); // Bloquea el semáforo
+			counter++;
+			sem_post(&sem); // Desbloquea el semáforo
+			// Fin sección crítica
+			sem_destroy(&sem);
+
+			pthread_exit(0);
+		}
+	}
+}
+
+void sig_handlerINT(int signo)
+{
+	int i;
+	if (signo == SIGINT)
+	{
+		printf("abortar alunizaje");
+		*alarma = 104;
+		sleep(1);
+		pthread_cancel(tid);
+		pthread_cancel(tg1);
+		pthread_cancel(tdp);
+		pthread_cancel(tap);
+		pthread_cancel(tsg);
+	}
+	pthread_cancel(tid);
+	exit(1);
+	return;
+}
 void tablero_informacion()
 {
 	printf("Valor actual distancia %d, combustible %d, giroscopio 1 %d, "
